@@ -1,4 +1,4 @@
-# Snippy Phylo Pipeline
+# Snippy Cluster Pipeline
 
 A Snakemake workflow for bacterial genomics that processes short-read sequencing data and genome assemblies to generate SNP-based distance matrices and interactive network visualizations for outbreak analysis.
 
