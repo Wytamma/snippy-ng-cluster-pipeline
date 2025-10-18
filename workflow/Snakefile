@@ -119,6 +119,8 @@ SHORT_READ_CONSTRAINT = "|".join([k for k in SAMPLES_SHORT.keys() if k]) if SAMP
 ASSEMBLY_CONSTRAINT = "|".join([k for k in SAMPLES_ASM.keys() if k]) if SAMPLES_ASM else "NONE_FOUND"
 
 snippy_threads = config["snippy"].get("threads", 1)
+SNAKE_DIR = Path(workflow.basedir)
+TEMPLATE_DIR = SNAKE_DIR / "templates"
 
 def get_snippy_output(wildcards):
     """Determine which rule output to use based on sample type"""
@@ -261,7 +263,7 @@ rule distance_matrix:
 rule cluster_network_html:
     input:
         distance_matrix="results/distance_matrix.phy",
-        template="workflow/templates/cluster_network.html.jinja2"
+        template=TEMPLATE_DIR / "cluster_network.html.jinja2"
     output:
         "results/cluster_network.html"
     params:
