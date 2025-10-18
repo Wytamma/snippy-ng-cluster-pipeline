@@ -1,0 +1,12 @@
+[project]
+authors = ["Wytamma Wirth <wytamma.wirth@me.com>"]
+channels = ["conda-forge", "bioconda"]
+name = "snippy-phylo-pipeline"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+snk = ">=0.31.1,<0.32"
+csvtk = ">=0.35.0,<0.36"

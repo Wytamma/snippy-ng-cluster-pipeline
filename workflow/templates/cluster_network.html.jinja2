@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Snippy-NG Network</title>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #121733;
+      --muted: #8ea0b8;
+      --text: #e7ecf5;
+      --accent: #5b9cff;
+      --danger: #ff6b6b;
+    }
+    html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji"; background: var(--bg); color: var(--text); }
+    .app { display: grid; grid-template-columns: 340px 1fr; gap: 12px; height: 100%; }
+    @media (max-width: 768px) {
+      .app { 
+        grid-template-columns: 1fr; 
+        grid-template-rows: auto 1fr; 
+        height: 100vh; 
+      }
+    }
+    .sidebar { background: var(--panel); padding: 16px; overflow: auto; box-shadow: 0 0 0 1px rgba(255,255,255,0.05) inset; }
+    @media (max-width: 768px) {
+      .sidebar { 
+        max-height: 40vh; 
+        overflow-y: auto; 
+      }
+    }
+    .main { position: relative; }
+    #vis { position: absolute; inset: 0; width: 100%; height: 100%; }
+    h1 { margin: 0 0 8px; font-size: 18px; }
+    p { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 6px; }
+    .select, .btn { width: 100%; background: #0f1530; border: 1px solid #202850; color: var(--text); padding: 8px 0px; border-radius: 10px; font-size: 14px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .dropzone { border: 1.5px dashed #2a3269; border-radius: 12px; padding: 12px; text-align: center; color: var(--muted); font-size: 13px; cursor: pointer; transition: 0.15s border-color, 0.15s background; background: #0d1330; margin-top: 8px; }
+    .dropzone.dragover { border-color: var(--accent); background: #0c1233; }
+    .hint { font-size: 12px; color: var(--muted); }
+    .node { cursor: grab; }
+    .node:active { cursor: grabbing; }
+    .link { stroke: white; stroke-opacity: 1; }
+    .tooltip { position: absolute; visibility: hidden; background: #0c1230; color: var(--text); padding: 8px 10px; border: 1px solid #273161; border-radius: 10px; font-size: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); pointer-events: none; }
+    .tests { white-space: pre-line; color: #cfe3ff; font-size: 12px; margin-top: 10px; }
+    .legend { margin-top: 8px; display: grid; gap: 8px; }
+    .legend-items { display: flex; flex-wrap: wrap; gap: 6px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; border-radius: 8px; background: #0e1431; border: 1px solid #1b2350; font-size: 12px; }
+    .legend-swatch { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.35); }
+    .legend-shape { width: 16px; height: 16px; display: inline-block; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <h1>Snippy-NG SNP Network</h1>
+      <p>Drop a metadata CSV/TSV to color and shape nodes. Set the threshold to cluster nodes by distance.</p>
+
+      <label for="threshold">Clustering threshold</label>
+      <input id="threshold" type="number" min="0" step="1" value="{{ threshold | default(20)  }}" class="select" style="text-align: center;"/>
+      <button id="resetThreshold" class="btn" style="margin-top:6px">Reset</button>
+
+      <div class="row">
+        <div>
+          <label for="colorSelect">Color by</label>
+          <select id="colorSelect" class="select"></select>
+        </div>
+        <div>
+          <label for="shapeSelect">Shape by</label>
+          <select id="shapeSelect" class="select"></select>
+        </div>
+      </div>
+
+      <div id="dropzone" class="dropzone" tabindex="0">
+        <strong>Drop metadata here</strong><br/>
+        <span class="hint">CSV or TSV with an <code>id</code> column</span>
+      </div>
+      <input id="fileInput" type="file" accept=".csv,.tsv,.phy,.phylip,.txt,text/csv,text/tab-separated-values,text/plain" hidden>
+      <div id="fileError" class="hint" style="color:var(--danger);"></div>
+
+      <div class="legend">
+        <div>
+          <div class="hint">Color legend</div>
+          <div id="colorLegend" class="legend-items"></div>
+        </div>
+        <div>
+          <div class="hint">Shape legend</div>
+          <div id="shapeLegend" class="legend-items"></div>
+        </div>
+      </div>
+
+    </aside>
+    <main class="main">
+      <svg id="vis" role="img" aria-label="Network graph"></svg>
+    </main>
+  </div>
+
+  <script id="phylip-matrix" type="text/plain">
+  {{ distance_matrix | e }}
+  </script>
+  <script id="default-metadata" type="text/plain">
+  {{ metadata | default('') }} 
+  </script>
+  <script>
+  (function(){
+    const svg = d3.select('#vis');
+    const main = d3.select('.main');
+    const tooltip = main.append('div').attr('class','tooltip');
+
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const fileError = document.getElementById('fileError');
+    const colorSelect = document.getElementById('colorSelect');
+    const shapeSelect = document.getElementById('shapeSelect');
+    const thresholdInput = document.getElementById('threshold');
+    const colorLegend = d3.select('#colorLegend');
+    const shapeLegend = d3.select('#shapeLegend');
+
+    let nodes = [];
+    let links = [];
+    let meta = [];
+    let metaIndex = new Map();
+    let matrix = null;
+    let sim = null;
+    let linkSel = null;
+    let nodeSel = null;
+
+    const symbolTypes = [
+      d3.symbolCircle, d3.symbolSquare, d3.symbolTriangle, d3.symbolDiamond,
+      d3.symbolCross, d3.symbolStar, d3.symbolWye
+    ];
+
+    function parseMatrix(text){
+      const trimmed = text.trim();
+      const lines = trimmed.split('\n').filter(line => line.trim());
+      
+      // Check if it's PHYLIP format (first line is a number)
+      const firstLine = lines[0].trim();
+      if (/^\d+$/.test(firstLine)) {
+        return parsePhylipMatrix(lines);
+      } else {
+        return parseCsvMatrix(trimmed);
+      }
+    }
+
+    function parsePhylipMatrix(lines) {
+      const n = parseInt(lines[0].trim());
+      if (lines.length < n + 1) throw new Error('PHYLIP format: insufficient data lines');
+      
+      const ids = [];
+      const values = [];
+      
+      for (let i = 1; i <= n; i++) {
+        const line = lines[i].trim();
+        const parts = line.split(/[\s,]+/);
+        const id = parts[0];
+        ids.push(id);
+        
+        // Initialize row with zeros
+        const row = new Array(n).fill(0);
+        
+        // Fill in the lower triangle values
+        for (let j = 1; j < parts.length; j++) {
+          const value = parseFloat(parts[j]);
+          if (!isNaN(value)) {
+            row[j - 1] = value;
+          }
+        }
+        values.push(row);
+      }
+      
+      // Make the matrix symmetric (copy lower triangle to upper triangle)
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          if (values[j] && values[j][i] !== undefined) {
+            values[i][j] = values[j][i];
+          }
+        }
+      }
+      
+      return {ids, values};
+    }
+
+    function parseCsvMatrix(csvText) {
+      const rows = d3.csvParse(csvText.trim());
+      if(!rows.columns || rows.columns[0] !== 'id') throw new Error('Matrix CSV must have first column named id');
+      const ids = rows.columns.slice(1);
+      const values = rows.map(r => ids.map(c => +r[c]));
+      if(values.length !== ids.length) throw new Error('Matrix must be square');
+      return {ids, values};
+    }
+
+    function parseTableAuto(text){
+      const trimmed = text.trim();
+      const isTSV = /\t/.test(trimmed) && !/,/.test(trimmed.split('\n')[0]);
+      return isTSV ? d3.tsvParse(trimmed) : d3.csvParse(trimmed);
+    }
+
+    function buildGraph(threshold){
+      const ids = matrix.ids;
+      nodes = ids.map(id => ({ id }));
+      links = [];
+      let minD = Infinity, maxD = -Infinity;
+      for(let i=0;i<ids.length;i++){
+        for(let j=i+1;j<ids.length;j++){
+          const d = matrix.values[i][j];
+          if(Number.isFinite(d)){
+            if(d>0) minD = Math.min(minD, d);
+            maxD = Math.max(maxD, d);
+            if(d <= threshold) links.push({ source: ids[i], target: ids[j], distance: d });
+          }
+        }
+      }
+      // Update input bounds on first run
+      if(!thresholdInput.dataset.locked){
+        const step = 1
+        thresholdInput.min = minD;
+        thresholdInput.max = maxD;
+        thresholdInput.step = step;
+        thresholdInput.value = Math.min(Math.max(+thresholdInput.value || maxD, minD), maxD)
+        thresholdInput.dataset.locked = '1';
+      }
+    }
+
+    function optionsFromMeta(){
+      const cols = meta.columns ? meta.columns.filter(c => c !== 'id') : Object.keys(meta[0] || {}).filter(c => c !== 'id');
+      const sets = [colorSelect, shapeSelect];
+      for(const sel of sets){
+        sel.innerHTML = '';
+        const none = document.createElement('option'); none.value = ''; none.textContent = '— none —'; sel.appendChild(none);
+        for(const c of cols){ const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o); }
+      }
+      // Pick sensible defaults
+      const preferColor = ['Region','Type','Group','Cluster'];
+      const preferShape = ['Host','Type','Sex'];
+      for(const c of preferColor){ if(cols.includes(c)) { colorSelect.value = c; break; } }
+      for(const c of preferShape){ if(cols.includes(c)) { shapeSelect.value = c; break; } }
+    }
+
+    function colorScaleFor(values){
+      const uniques = Array.from(new Set(values.filter(v => v !== undefined && v !== null)));
+      const allNumeric = uniques.every(v => v === '' || v === null || !isNaN(+v));
+      if(allNumeric && uniques.length > 0){
+        const n = uniques.map(Number); const lo = Math.min(...n), hi = Math.max(...n);
+        const scale = d3.scaleLinear().domain([lo, hi]).range([0,1]);
+        return v => d3.interpolateTurbo(scale(+v || 0));
+      } else {
+        const palette = d3.schemeTableau10.concat(d3.schemeSet3 ? d3.schemeSet3.flat() : []);
+        const map = new Map(); let i=0;
+        return v => { if(!map.has(v)) map.set(v, palette[i++ % palette.length]); return map.get(v); };
+      }
+    }
+
+    function shapeScaleFor(values){
+      const uniques = Array.from(new Set(values.filter(v => v !== undefined && v !== null)));
+      const map = new Map(); let i=0;
+      return v => { if(!map.has(v)) map.set(v, symbolTypes[i++ % symbolTypes.length]); return map.get(v); };
+    }
+
+    function draw(){
+      const box = svg.node().getBoundingClientRect();
+      const width = box.width || 800; const height = box.height || 600;
+      svg.attr('width', width).attr('height', height).attr('viewBox', `0 0 ${width} ${height}`);
+      svg.selectAll('*').remove();
+      const gLinks = svg.append('g').attr('stroke-width', 1.5).attr('class','links');
+      const gNodes = svg.append('g').attr('class','nodes');
+
+      // Accessors
+      const colorCol = colorSelect.value || null;
+      const shapeCol = shapeSelect.value || null;
+      const colorValues = nodes.map(n => (metaIndex.get(n.id) || {})[colorCol]);
+      const shapeValues = nodes.map(n => (metaIndex.get(n.id) || {})[shapeCol]);
+      const colorFor = colorCol ? colorScaleFor(colorValues) : (() => '#5b9cff');
+      const shapeFor = shapeCol ? shapeScaleFor(shapeValues) : (() => d3.symbolCircle);
+
+      // Legends
+      updateLegends(colorCol, colorValues, colorFor, shapeCol, shapeValues, shapeFor);
+
+      linkSel = gLinks.selectAll('line')
+        .data(links)
+        .join('line')
+        .attr('class','link');
+
+      const symbol = d3.symbol().size(200);
+      nodeSel = gNodes.selectAll('path')
+        .data(nodes)
+        .join('path')
+        .attr('class','node')
+        .attr('d', d => symbol.type(shapeFor((metaIndex.get(d.id) || {})[shapeCol]))())
+        .attr('fill', d => colorFor((metaIndex.get(d.id) || {})[colorCol]))
+        .attr('stroke', '#ffffffff').attr('stroke-width', 1.2)
+        .call(createDragBehavior())
+        // D3 tooltip pattern
+        .on('mouseover', (event, d) => {
+          const rec = metaIndex.get(d.id) || {};
+          let html = `<strong>${escapeHTML(d.id)}</strong>`;
+          for(const [k,v] of Object.entries(rec)){ if(k !== 'id') html += `<div>${escapeHTML(k)}: ${escapeHTML(String(v))}</div>`; }
+          tooltip.html(html).style('visibility', 'visible');
+        })
+        .on('mousemove', (event) => {
+          const [x, y] = d3.pointer(event, svg.node());
+          tooltip.style('top', (y - 30) + 'px').style('left', (x + 12) + 'px');
+        })
+        .on('mouseout', () => tooltip.style('visibility', 'hidden'));
+
+      sim = d3.forceSimulation(nodes)
+        .force('link', d3.forceLink(links).id(d => d.id).distance(60).strength(0.8))
+        .force('charge', d3.forceManyBody().strength(-5))
+        .force('center', d3.forceCenter(width/2, height/2))
+        .force('collide', d3.forceCollide(16))
+        .force('boundary', () => {
+          const margin = 20;
+          for (let node of nodes) {
+            node.x = Math.max(margin, Math.min(width - margin, node.x));
+            node.y = Math.max(margin, Math.min(height - margin, node.y));
+          }
+        })
+        .on('tick', () => {
+          linkSel
+            .attr('x1', d => d.source.x)
+            .attr('y1', d => d.source.y)
+            .attr('x2', d => d.target.x)
+            .attr('y2', d => d.target.y);
+          nodeSel
+            .attr('transform', d => `translate(${d.x},${d.y})`);
+        });
+    }
+
+    function createDragBehavior(){
+      function dragstarted(event, d){ if(!event.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }
+      function dragged(event, d){ 
+        const box = svg.node().getBoundingClientRect();
+        const width = box.width || 800; 
+        const height = box.height || 600;
+        const margin = 20;
+        d.fx = Math.max(margin, Math.min(width - margin, event.x)); 
+        d.fy = Math.max(margin, Math.min(height - margin, event.y)); 
+      }
+      function dragended(event, d){ if(!event.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }
+      return d3.drag().on('start', dragstarted).on('drag', dragged).on('end', dragended);
+    }
+
+    function updateLegends(colorCol, colorValues, colorFor, shapeCol, shapeValues, shapeFor){
+      colorLegend.selectAll('*').remove();
+      if(colorCol){
+        const uniques = Array.from(new Set(colorValues));
+        const items = colorLegend.selectAll('div').data(uniques).join('div').attr('class','legend-item');
+        items.append('div').attr('class','legend-swatch').style('background', d => colorFor(d));
+        items.append('div').text(d => String(d));
+      }
+      shapeLegend.selectAll('*').remove();
+      if(shapeCol){
+        const uniques = Array.from(new Set(shapeValues));
+        const items = shapeLegend.selectAll('div').data(uniques).join('div').attr('class','legend-item');
+        items.append('svg').attr('class','legend-shape').attr('viewBox','-10 -10 20 20')
+          .append('path')
+          .attr('d', d => d3.symbol().type(shapeFor(d)).size(120)())
+          .attr('fill', '#bcd0ff').attr('stroke', '#ffffffff');
+        items.append('div').text(d => String(d));
+      }
+    }
+
+    function escapeHTML(s){
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+    }
+
+    // File handling for metadata
+    function handleFiles(files){
+      fileError.textContent = '';
+      const f = files && files[0]; if(!f) return;
+      if(f.size > 10 * 1024 * 1024){ fileError.textContent = 'File too large (10MB max).'; return; }
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const table = parseTableAuto(String(e.target.result || ''));
+          if(!table.columns || !table.columns.includes('id')) throw new Error('Metadata must include an id column.');
+          const idSet = new Set(matrix.ids.map(String));
+          const filtered = table.filter(r => idSet.has(String(r.id)));
+          if(filtered.length === 0) throw new Error('No matching ids found between metadata and matrix.');
+          meta = filtered; meta.columns = table.columns;
+          metaIndex = new Map(meta.map(row => [String(row.id), row]));
+          optionsFromMeta();
+          draw();
+        } catch(err){ fileError.textContent = err.message; }
+      };
+      reader.onerror = () => { fileError.textContent = 'Failed to read file.'; };
+      reader.readAsText(f);
+    }
+
+    // Events
+    dropzone.addEventListener('click', () => fileInput.click());
+    dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+    dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
+    fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+    colorSelect.addEventListener('change', draw);
+    shapeSelect.addEventListener('change', draw);
+
+    document.getElementById('resetThreshold').addEventListener('click', () => { thresholdInput.dataset.locked=''; updateGraph(); });
+    thresholdInput.addEventListener('input', updateGraph);
+    thresholdInput.addEventListener('change', updateGraph);
+
+    // Resize handling
+    const ro = new ResizeObserver(() => draw());
+    ro.observe(document.querySelector('.main'));
+
+    function updateGraph(){
+      const t = +thresholdInput.value;
+      if (isNaN(t) || t < 0) {
+        thresholdInput.value = 0;
+        return;
+      }
+      buildGraph(t); draw();
+    }
+
+    function init(){
+      matrix = parseMatrix(document.getElementById('phylip-matrix').textContent);
+      meta = parseTableAuto(document.getElementById('default-metadata').textContent);
+      metaIndex = new Map(meta.map(row => [String(row.id), row]));
+      optionsFromMeta();
+      thresholdInput.dataset.locked = '';
+      updateGraph();
+      runSelfTests();
+      updateGraph();
+    }
+
+    function runSelfTests(){
+      const out = [];
+      try {
+        const m = parseMatrix(document.getElementById('phylip-matrix').textContent);
+        out.push(`[OK] PHYLIP matrix ids=${m.ids.length}`);
+        const old = matrix; matrix = m; buildGraph(0.21); const lo = links.length; buildGraph(0.9); const hi = links.length; matrix = old;
+        out.push(hi >= lo ? `[OK] links monotonic (${lo}→${hi})` : `[FAIL] links monotonic (${lo}→${hi})`);
+        
+        // Test PHYLIP format specifically
+        const phylipTest = `3\nX\nY,0.1\nZ,0.2,0.15`;
+        const phylipMatrix = parseMatrix(phylipTest);
+        out.push((phylipMatrix.ids.length === 3 && phylipMatrix.values[1][0] === 0.1) ? '[OK] PHYLIP parse' : '[FAIL] PHYLIP parse');
+        
+        // Test CSV format still works
+        const csvTest = `id,A,B\nA,0,0.5\nB,0.5,0`;
+        const csvMatrix = parseMatrix(csvTest);
+        out.push((csvMatrix.ids.length === 2 && csvMatrix.values[0][1] === 0.5) ? '[OK] CSV parse' : '[FAIL] CSV parse');
+        
+        const csv = `id,Group\nA,x\nB,y`; const tsv = `id\tGroup\nA\tx\nB\ty`;
+        const pcsv = parseTableAuto(csv); const ptsv = parseTableAuto(tsv);
+        out.push((pcsv.length===2 && ptsv.length===2) ? '[OK] CSV/TSV parse' : '[FAIL] CSV/TSV parse');
+        const dstr = d3.symbol().type(d3.symbolCircle).size(120)();
+        out.push(typeof dstr === 'string' && dstr.length > 0 ? '[OK] symbol path' : '[FAIL] symbol path');
+        const cscale = colorScaleFor([1,2,3]); const col = cscale(2);
+        out.push(typeof col === 'string' && col.length>0 ? '[OK] color scale' : '[FAIL] color scale');
+      } catch(e){ out.push(`[ERROR] ${e.message}`); }
+      const el = document.getElementById('testOutput'); if(el) el.textContent = out.join('\n');
+    }
+
+    init();
+  })();
+  </script>
+</body>
+</html>

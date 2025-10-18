@@ -1,0 +1,302 @@
+import csv
+import os
+from typing import TypedDict, List
+
+
+def create_sample_list_from_directory(samples_dir: str):
+    """Create a sample list from a directory containing mixed FASTQ and FASTA files"""
+    import os
+    import glob
+    
+    samples = []
+    
+    # Look for subdirectories first (paired FASTQ files)
+    for sample_dir in glob.glob(os.path.join(samples_dir, "*/")):
+        sample_name = os.path.basename(sample_dir.rstrip('/'))
+        
+        # Look for paired FASTQ files
+        r1_patterns = [
+            os.path.join(sample_dir, f"{sample_name}_1.fastq.gz"),
+            os.path.join(sample_dir, f"{sample_name}_R1.fastq.gz"),
+            os.path.join(sample_dir, f"{sample_name}_1.fq.gz"),
+            os.path.join(sample_dir, f"{sample_name}_R1.fq.gz")
+        ]
+        
+        r2_patterns = [
+            os.path.join(sample_dir, f"{sample_name}_2.fastq.gz"),
+            os.path.join(sample_dir, f"{sample_name}_R2.fastq.gz"),
+            os.path.join(sample_dir, f"{sample_name}_2.fq.gz"),
+            os.path.join(sample_dir, f"{sample_name}_R2.fq.gz")
+        ]
+        
+        r1_file = None
+        r2_file = None
+        
+        for pattern in r1_patterns:
+            if os.path.exists(pattern):
+                r1_file = pattern
+                break
+                
+        for pattern in r2_patterns:
+            if os.path.exists(pattern):
+                r2_file = pattern
+                break
+        
+        if r1_file and r2_file:
+            samples.append([sample_name, r1_file, r2_file])
+    
+    # Look for FASTA files (assemblies) in subdirectories
+    for fasta_pattern in ["*.fna", "*.fasta", "*.fa"]:
+        for fasta_file in glob.glob(os.path.join(samples_dir, "**", fasta_pattern), recursive=True):
+            # Get sample name from filename (without extension)
+            sample_name = os.path.splitext(os.path.basename(fasta_file))[0]
+            samples.append([sample_name, fasta_file, ""])
+    
+    return samples
+
+def load_samples(csv_path: str = None, samples_dir: str = None):
+    """Load samples either from CSV file or by scanning a directory"""
+    samples = {}
+    samples_short = {}
+    samples_asm = {}
+    
+    if samples_dir:
+        # Generate samples from directory
+        sample_list = create_sample_list_from_directory(samples_dir)
+    elif csv_path and os.path.exists(csv_path):
+        # Load from existing CSV file
+        sample_list = []
+        with open(csv_path, "r") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if len(row) < 2:  # Skip invalid rows
+                    continue
+                sample_name = row[0].strip()
+                if not sample_name:  # Skip empty sample names
+                    continue
+                r1 = row[1].strip()
+                r2 = row[2].strip() if len(row) > 2 and row[2].strip() else None
+                sample_list.append([sample_name, r1, r2] if r2 else [sample_name, r1, ""])
+    else:
+        raise ValueError(f"Either samples_dir must be provided or csv_path ({csv_path}) must exist")
+    
+    # Process the sample list
+    for row in sample_list:
+        sample_name = row[0]
+        r1 = row[1]
+        r2 = row[2] if len(row) > 2 and row[2].strip() else None
+        
+        # Skip if sample name is empty
+        if not sample_name:
+            continue
+            
+        samples[sample_name] = [r1, r2] if r2 else [r1]
+        
+        # Determine if this is short reads or assembly based on R2 presence
+        if r2:  # Has R2, so it's paired-end short reads
+            samples_short[sample_name] = [r1, r2]
+        else:  # No R2, so it's an assembly
+            samples_asm[sample_name] = r1
+    
+    return samples, samples_short, samples_asm
+    
+
+# Load samples - either from directory or CSV file
+if config.get("samples"):
+    # Load samples directly from directory
+    SAMPLES, SAMPLES_SHORT, SAMPLES_ASM = load_samples(samples_dir=config["samples"])
+else:
+    # Load from CSV file (default or specified)
+    reads_list_file = config.get('reads_list', 'sample_list.csv')
+    SAMPLES, SAMPLES_SHORT, SAMPLES_ASM = load_samples(csv_path=reads_list_file)
+
+# Debug output
+onstart:
+    print(f"Total samples: {len(SAMPLES)}")
+
+# Create safe wildcard constraints
+SHORT_READ_CONSTRAINT = "|".join([k for k in SAMPLES_SHORT.keys() if k]) if SAMPLES_SHORT else "NONE_FOUND"
+ASSEMBLY_CONSTRAINT = "|".join([k for k in SAMPLES_ASM.keys() if k]) if SAMPLES_ASM else "NONE_FOUND"
+
+snippy_threads = config["snippy"].get("threads", 1)
+
+def get_snippy_output(wildcards):
+    """Determine which rule output to use based on sample type"""
+    if wildcards.sample in SAMPLES_SHORT:
+        return f"results/{wildcards.sample}/snps.pseudo.fna"
+    elif wildcards.sample in SAMPLES_ASM:
+        return f"results/{wildcards.sample}/snps.pseudo.fna"
+    else:
+        raise ValueError(f"Sample {wildcards.sample} not found in either short reads or assemblies")
+
+rule all:
+    input:
+        "results/cluster_network.html",
+
+rule snippy_ng_short_reads:
+    input:
+        r1=lambda wildcards: SAMPLES_SHORT[wildcards.sample][0],
+        r2=lambda wildcards: SAMPLES_SHORT[wildcards.sample][1],
+        ref=config["reference"]
+    output:
+        "results/{sample}/snps.pseudo.fna",
+        temp(directory("results/{sample}")),
+    params:
+        outdir=lambda wildcards: f"results/{wildcards.sample}",
+        header=lambda wildcards: wildcards.sample,
+        downsample=config.get("downsample", 10)
+    wildcard_constraints:
+        sample=SHORT_READ_CONSTRAINT
+    conda:
+        "envs/snippy-ng.yaml"
+    log: 
+        "results/{sample}/snippy-ng.log"
+    threads: lambda wildcards: snippy_threads
+    shell:
+        """
+        snippy-ng short \
+            --skip-check \
+            --R1 {input.r1} \
+            --R2 {input.r2} \
+            --ref {input.ref} \
+            --outdir {params.outdir} \
+            --cpus {threads} \
+            --header {params.header} \
+            --downsample {params.downsample} \
+            --force \
+            --quiet
+        """
+
+rule snippy_ng_assemblies:
+    input:
+        assembly=lambda wildcards: SAMPLES_ASM[wildcards.sample],
+        ref=config["reference"]
+    output:
+        "results/{sample}/snps.pseudo.fna",
+        temp(directory("results/{sample}")),
+    params:
+        outdir=lambda wildcards: f"results/{wildcards.sample}",
+        header=lambda wildcards: wildcards.sample,
+        downsample=config.get("downsample", 10)
+    wildcard_constraints:
+        sample=ASSEMBLY_CONSTRAINT
+    conda:
+        "envs/snippy-ng.yaml"
+    log: 
+        "results/{sample}/snippy-ng.log"
+    threads: lambda wildcards: snippy_threads
+    shell:
+        """
+        snippy-ng asm \
+            --skip-check \
+            --assembly {input.assembly} \
+            --ref {input.ref} \
+            --outdir {params.outdir} \
+            --cpus {threads} \
+            --header {params.header} \
+            --force \
+            --quiet
+        """
+
+rule join_contigs:
+    input:
+        fasta="results/{sample}/snps.pseudo.fna",
+        snippy_dir="results/{sample}"
+    output:
+        temp("results/{sample}.pseudo.joined.fna")
+    conda:
+        "envs/snippy-ng.yaml"
+    shell:
+        r"""
+        awk '
+            /^>/ && NR==1 {{ print; next }}   # print only the first header
+            /^>/ {{ next }}                  # skip other headers
+            {{ printf "%s", $0 }}            # concatenate sequence lines
+            END {{ printf "\n" }}            # newline at the end
+        ' "{input.fasta}" > "{output}"
+        """
+
+rule concat_consensus:
+    input:
+        fasta_files=expand("results/{sample}.pseudo.joined.fna", sample=SAMPLES.keys()),
+    output:
+        "results/full.aln",
+    conda:
+        "envs/snippy-ng.yaml"
+    params:
+        reference=config["reference"]
+    shell:
+        r"""
+        seqkit concat {input.fasta_files} --full > "{output}"
+        """
+
+
+rule core_snp_filter:
+    input:
+        "results/full.aln"
+    output:
+        "results/filter.aln"
+    conda:
+        "envs/core-snp-filter.yaml"
+    params:
+        core=config.get("core", 0.9)
+    shell:
+        """
+        coresnpfilter -e -c {params.core} {input} > {output}
+        """
+
+rule distance_matrix:
+    input:
+        "results/filter.aln"
+    output:
+        "results/distance_matrix.phy",
+    conda:
+        "envs/distle.yaml"
+    threads: workflow.cores # use all available cores
+    shell:
+        """
+        distle --threads {threads} --output-sep "," --input-format fasta -o phylip {input} {output}
+        """
+
+rule cluster_network_html:
+    input:
+        distance_matrix="results/distance_matrix.phy",
+        template="workflow/templates/cluster_network.html.jinja2"
+    output:
+        "results/cluster_network.html"
+    params:
+        threshold=config.get("cluster_threshold", 20),
+        metadata=config.get("metadata")
+    run:
+        from jinja2 import Template
+        
+        # Read the distance matrix
+        with open(input.distance_matrix, 'r') as f:
+            distance_matrix_content = f.read().strip()
+        
+        # Read metadata
+        if params.metadata != 'None' and params.metadata is not None:
+            with open(params.metadata, 'r') as f:
+                metadata_content = f.read().strip()
+        else:
+            metadata_content = ""
+        
+
+        # Read the template
+        with open(input.template, 'r') as f:
+            template_content = f.read()
+        
+        # Render the template
+        template = Template(template_content)
+        rendered_html = template.render(
+            distance_matrix=distance_matrix_content, 
+            metadata=metadata_content,
+            threshold=params.threshold)
+        
+        # Write the output
+        with open(output[0], 'w') as f:
+            f.write(rendered_html)
+
+
+
+

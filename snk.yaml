@@ -1,0 +1,56 @@
+additional_snakemake_args: []
+art: null
+cli:
+  output_dir:
+    default: results
+    help: Path to the output directory.
+    type: Path
+  samples:
+    help: Path to the directory containing sample subdirectories or FASTA/FASTQ
+      commas.
+    required: true
+    type: Path
+  metadata:
+    help: Path to a metadata file (CSV or TSV) for annotating the network visualization.
+    type: Path
+  reference:
+    help: Path to the reference genome in FASTA or GenBank format.
+    required: true
+    type: Path
+  cluster_threshold:
+    default: 20
+    help: Distance threshold for clustering in the network visualization (e.g., 20 for
+      20 SNPs).
+    type: int
+  downsample:
+    default: 30
+    help: Downsample reads to a specified coverage (e.g., 30.0 for 30x coverage).
+    type: int
+  core:
+    default: 0.9
+    help: At least this fraction of the sequences must contain an unambiguous base (A, C, G or T) at a site for the site to be included.
+    type: float
+  snippy:
+    threads:
+      default: 1
+      help: Number of threads to use for Snippy.
+      type: int
+  
+commands:
+- run
+- script
+- env
+- profile
+- info
+- config
+conda: true
+configfile: null
+font: small
+logo: null
+min_snk_cli_version: null
+resources: []
+skip_missing: false
+snakefile: null
+symlink_resources: false
+tagline: A Snakemake workflow CLI generated with Snk
+version: editable

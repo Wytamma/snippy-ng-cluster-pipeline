@@ -1,0 +1,20 @@
+id	Taxonomy	Unit first positive	Culture month	Source	Patient no.
+GCA_030411315.1	Enterobacter hormaechei	Med/Surg	2/2021	Wound	1
+GCA_030411295.1	Enterobacter hormaechei	Med/Surg	4/2022	Bone	2
+GCA_030411305.1	Morganella morganii	Med/Surg	4/2022	Bone	2
+GCA_030411275.1	Proteus mirabilis	Med/Surg	6/2022	Peri-anal swab	2
+GCA_030411255.1	Enterobacter hormaechei	Med/Surg	4/2022	Urine	3
+GCA_030411235.1	Escherichia coli	Med/Surg	5/2022	Blood	4
+GCA_030411195.1	Klebsiella aerogenes	ICU	5/2022	Blood	5
+GCA_030411185.1	Enterobacter hormaechei	OP Surg	9/2022	Tissue	6
+GCA_030411155.1	Klebsiella aerogenes	Med/Surg	9/2022	Peri-anal swaba	7
+GCA_030411135.1	Enterobacter hormaechei	ICU	9/2022	Peri-anal swabb	8
+GCA_030411105.1	Enterobacter hormaechei	IP Rehab	11/2022	Urine b	8
+GCA_030411095.1	Klebsiella aerogenes	ICU	10/2022	Peri-anal swabb	9
+GCA_030411075.1	Enterobacter hormaechei	ICU	12/2022	Peri-anal swabb	10
+GCA_030411175.1	Enterobacter hormaechei	Med/Surg	12/2022	Wound	11
+GCA_030411025.1	Raoultella ornithinolytica	Med/Surg	12/2022	Wound	11
+GCA_030411055.1	Enterobacter roggenkampii	Med/Surg	1/2023	Sputum	12
+GCA_030410265.1	Enterobacter roggenkampii	Med/Surg	2/2023	Blood	13
+GCA_030410235.1	Enterobacter roggenkampii	IP Rehab	2/2023	Peri-anal swabc	14
+GCA_030410225.1	Escherichia coli	ICU	2/2023	Peri-anal swabc	15
