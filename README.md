@@ -28,33 +28,11 @@ This pipeline uses **snippy-ng** for variant calling against a reference genome,
 
 ## Installation
 
-### Using Pixi (Recommended)
+### Using Snk (Recommended)
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd snippy-phylo-pipeline
-```
-
-2. Install dependencies:
-```bash
-pixi install
-```
-
-3. Activate environment:
-```bash
-pixi shell
-```
-
-### Using Conda/Mamba
-
-```bash
-# Install snakemake
-conda install -c bioconda snakemake
-
-# Clone repository
-git clone <repository-url>
-cd snippy-phylo-pipeline
+snk install Wytamma/snippy-ng-cluster-pipeline
 ```
 
 ## Usage
@@ -84,49 +62,10 @@ samples/
     └── genome.fna
 ```
 
-### Configuration
-
-Create or modify `snk.yaml`:
-
-```yaml
-# Reference genome
-reference: "data/reference.fa"
-
-# Input method 1: CSV file
-reads_list: "samples.csv"
-
-# Input method 2: Directory scanning
-# samples: "data/samples"
-
-# Optional parameters
-downsample: 10                # Coverage downsampling
-core: 0.9                    # Core genome threshold (90%)
-cluster_threshold: 20        # SNP distance threshold for clustering
-metadata: "metadata.csv"    # Optional metadata for visualization
-```
-
 ### Running the Pipeline
 
-#### Complete Analysis
-```bash
-snakemake --configfile snk.yaml --use-conda --cores 8
 ```
-
-#### Specific Targets
-```bash
-# Generate phylogenetic tree only
-snakemake --configfile snk.yaml --use-conda results/tree.nwk
-
-# Generate network visualization only
-snakemake --configfile snk.yaml --use-conda results/cluster_network.html
-
-# Process specific sample
-snakemake --configfile snk.yaml --use-conda results/snippy/SAMPLE_NAME/snps.pseudo.fna
-```
-
-#### Dry Run
-```bash
-snakemake --configfile snk.yaml --use-conda --dry-run
+snippy-ng-cluster-pipeline run --cores 40 --snippy-threads 2 --samples sanmples_dir --reference Hospital_outbreak_reference.fa --metadata Hospital_outbreak_metadata.csv --core 0.9
 ```
 
 ## Outputs
