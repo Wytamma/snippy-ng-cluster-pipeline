@@ -76,32 +76,6 @@ snippy-ng-cluster-pipeline run --cores 40 --snippy-threads 2 --samples samples_d
 - `results/filter.aln` - Core SNP alignment
 - `results/distance_matrix.phy` - Pairwise SNP distance matrix
 
-### Per-Sample Results
-- `results/snippy/{sample}/` - Individual snippy outputs
-  - `snps.pseudo.fna` - Pseudo-genome sequence
-  - `snps.vcf` - Variant calls
-  - `snps.bam` - Read alignments
-  - `snps.stats.tsv` - Summary statistics
-
-## Interactive Network Visualization
-
-The `cluster_network.html` provides:
-
-- **Dynamic Clustering**: Adjust SNP distance threshold to form clusters
-- **Metadata Integration**: Color and shape nodes by sample attributes
-- **Responsive Design**: Works on desktop and mobile devices
-- **Boundary Constraints**: Nodes stay within viewport bounds
-- **Drag & Drop**: Upload metadata files directly in browser
-
-### Metadata Format
-Optional CSV/TSV with sample attributes:
-```csv
-id,Region,Host,Collection_Date
-ERR1102348,Europe,Human,2020-01-15
-ERR1102353,Asia,Bovine,2020-02-20
-GCA_assembly,Americas,Environmental,2020-03-10
-```
-
 ## Pipeline Components
 
 1. **Variant Calling** (`snippy-ng`)
@@ -120,10 +94,6 @@ GCA_assembly,Americas,Environmental,2020-03-10
    - Computes pairwise SNP distances
    - Generates PHYLIP format matrix
 
-5. **Tree Building** (`FastTree`)
-   - Maximum-likelihood phylogeny
-   - GTR nucleotide substitution model
-
 6. **Visualization**
    - D3.js-powered network analysis
    - Force-directed layout with clustering
@@ -140,49 +110,3 @@ GCA_assembly,Americas,Environmental,2020-03-10
 | `cluster_threshold` | 20 | Default clustering threshold |
 | `metadata` | - | Optional metadata file |
 
-## Troubleshooting
-
-### Common Issues
-
-1. **Sample Detection Problems**
-   - Ensure FASTQ files follow naming conventions (`*_1.fastq.gz`, `*_2.fastq.gz`)
-   - Check CSV format matches expected columns
-   - Verify file paths are correct
-
-2. **Memory Issues**
-   - Reduce `--cores` parameter
-   - Check available system memory
-   - Consider downsampling coverage
-
-3. **Missing Dependencies**
-   - Ensure conda environments are properly created
-   - Check internet connection for package downloads
-
-### Debug Mode
-Enable debug output:
-```bash
-snakemake --configfile snk.yaml --use-conda --verbose
-```
-
-## Citation
-
-If you use this pipeline, please cite:
-
-- **Snippy-NG**: [Citation needed]
-- **Snakemake**: Köster, Johannes and Rahmann, Sven. "Snakemake - A scalable bioinformatics workflow engine". Bioinformatics 2012.
-- **FastTree**: Price, M.N., Dehal, P.S., and Arkin, A.P. (2010) FastTree 2 -- Approximately Maximum-Likelihood Trees for Large Alignments. PLoS ONE, 5(3):e9490.
-
-## License
-
-[Specify license here]
-
-## Contributing
-
-Contributions welcome! Please submit issues and pull requests on the project repository.
-
-## Support
-
-For questions and support:
-- Create an issue on the GitHub repository
-- Check the documentation and troubleshooting guide
-- Review Snakemake documentation for workflow questions
