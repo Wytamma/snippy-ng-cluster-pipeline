@@ -65,7 +65,7 @@ samples/
 ### Running the Pipeline
 
 ```
-snippy-ng-cluster-pipeline run --cores 40 --snippy-threads 2 --samples sanmples_dir --reference Hospital_outbreak_reference.fa --metadata Hospital_outbreak_metadata.csv --core 0.9
+snippy-ng-cluster-pipeline run --cores 40 --snippy-threads 2 --samples samples_dir --reference Hospital_outbreak_reference.fa --metadata Hospital_outbreak_metadata.csv --core 0.9
 ```
 
 ## Outputs
