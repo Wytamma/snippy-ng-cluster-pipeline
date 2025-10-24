@@ -71,8 +71,8 @@ snippy-ng-cluster-pipeline run --cores 40 --snippy-threads 2 --samples samples_d
 ## Outputs
 
 ### Main Results
-- `results/tree.nwk` - Phylogenetic tree in Newick format
 - `results/cluster_network.html` - Interactive network visualization
+- `results/full.aln` - full alignment
 - `results/filter.aln` - Core SNP alignment
 - `results/distance_matrix.phy` - Pairwise SNP distance matrix
 
